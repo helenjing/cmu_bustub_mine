@@ -13,13 +13,13 @@
 #include <cstdio>
 #include <thread>  // NOLINT
 #include <vector>
-
+#include <iostream>
 #include "buffer/clock_replacer.h"
 #include "gtest/gtest.h"
 
 namespace bustub {
 
-TEST(ClockReplacerTest, DISABLED_SampleTest) {
+TEST(ClockReplacerTest, SampleTest) { // DISABLED_SampleTest
   ClockReplacer clock_replacer(7);
 
   // Scenario: unpin six elements, i.e. add them to the replacer.

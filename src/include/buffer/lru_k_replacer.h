@@ -14,6 +14,7 @@
 
 #include <limits>
 #include <list>
+#include <queue>  // 新加
 #include <mutex>  // NOLINT
 #include <unordered_map>
 #include <vector>
@@ -30,10 +31,32 @@ class LRUKNode {
   /** History of last seen K timestamps of this page. Least recent timestamp stored in front. */
   // Remove maybe_unused if you start using them. Feel free to change the member variables as you want.
 
-  [[maybe_unused]] std::list<size_t> history_;
-  [[maybe_unused]] size_t k_;
-  [[maybe_unused]] frame_id_t fid_;
-  [[maybe_unused]] bool is_evictable_{false};
+  std::list<size_t> history_;
+  size_t k_;
+  frame_id_t fid_;
+  bool is_evictable_{false};
+  bool kicked_off_{true};  // 目前是没有登记上的状态
+  bool queue_tag_{0}; // 表示在not_full_还是full_中，（为了解决满了被从not_full_中踢掉（不可能改变kicked_off_的状态），但是没有登记到full_中的情形）
+  size_t register_timestamp_;  // 记录下最近一次登记的时候last_k_timestamp是多少
+  
+ public:
+  LRUKNode(size_t replacer_k, frame_id_t frame_id);
+  // 关于Evictable的状态
+  void SetEvictable(bool set_evictable);
+  auto isEvictable()->bool;
+  void Clear();  // 用于evict之后，对于History等的重置
+  // 关于History的状态
+  auto GetHistorySize()->size_t;
+  void NewVisit(size_t timestamp);
+  // 关于full_更新priority_queue
+  auto GetRegisterTimestamp()->size_t;
+  auto GetLastKTimestamp()->size_t;
+  void FlushKTimestamp(); // 这个是更新register_timestamp字段的。
+  // 关于not_full_和full_的登记状态
+  void KickOff(bool on_off); // 通知已经被full_踢下去了，需要找机会自己再register一下。
+  auto isRegistered()->bool;  // 查看被踢下去了没有
+  auto GetQueueTag()->bool; //查看在not_full_还是full_中（配合GetHistorySize以及isRegistered食用）超过k_并且isRegister==true并且not_full_就改
+  void SetQueueTag(bool queue_tag); // 0:not_full_ 1:full_
 };
 
 /**
@@ -65,7 +88,7 @@ class LRUKReplacer {
    *
    * @brief Destroys the LRUReplacer.
    */
-  ~LRUKReplacer() = default;
+  ~LRUKReplacer();  // =default的意思是让编译器自己生成
 
   /**
    * TODO(P1): Add implementation
@@ -150,12 +173,29 @@ class LRUKReplacer {
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
-  [[maybe_unused]] std::unordered_map<frame_id_t, LRUKNode> node_store_;
-  [[maybe_unused]] size_t current_timestamp_{0};
-  [[maybe_unused]] size_t curr_size_{0};
-  [[maybe_unused]] size_t replacer_size_;
-  [[maybe_unused]] size_t k_;
+  std::unordered_map<frame_id_t, LRUKNode> node_store_;
+  size_t current_timestamp_{0};
+  size_t curr_size_{0};  // 当前的lru池子里的元素数(能够evict的)
+  size_t replacer_size_; // 这个是replacer（能够evict以及pin上的）最大值
+  size_t k_; // 这是 LRU_k中的K
   [[maybe_unused]] std::mutex latch_;
+
+//  public:
+//   static bool cmp(frame_id_t& a, frame_id_t& b){  // 小根堆,说找不到这个函数，看看挪上来可以吗
+//     return node_store_[a].GetRegisterTimestamp()< node_store_[b].GetRegisterTimestamp(); // 好像语法出问题了
+//   }
+struct cmp{
+  bool operator()(std::pair<frame_id_t,size_t>& a, std::pair<frame_id_t,size_t>& b){
+    // return a.second < b.second;
+    return a.second > b.second; //这个比较和正常的逻辑是反的。（如果想让a排在b前，需要a>b）
+  }
+};
+  
+ private:
+  // 辅助的一些数据结构
+  size_t curr_tot_size_{0};
+  std::list<frame_id_t> not_full_;  //引用次数未达到k次的
+  std::priority_queue<std::pair<frame_id_t,size_t>, std::vector<std::pair<frame_id_t,size_t>>, cmp> full_;  // 之前写力扣的时候也遇到这个问题了，忘了怎么解决的了
 };
 
 }  // namespace bustub

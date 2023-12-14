@@ -208,5 +208,18 @@ class BufferPoolManager {
   }
 
   // TODO(student): You may add additional private members and helper functions
+
+  /**
+   * @brief Reset a frame in buffer pool. Reset memory and reset meta-data for the frame.
+   * @param frame_id id of the page(frame) to reset
+  */
+  void ResetFrame(frame_id_t frame_id);
+
+  /**
+   * @brief Find a empty frame from freeList, or evict a page from replacer.
+   * @param frame_id the id of available empty frame
+   * @return false if all pages are not available (pinned)
+  */
+  auto FindOrEvictFrame(frame_id_t* frame_id) -> bool;
 };
 }  // namespace bustub

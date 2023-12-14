@@ -47,6 +47,38 @@ class ClockReplacer : public Replacer {
 
  private:
   // TODO(student): implement me!
+  class Node{ //弄一个双向链表是不是好一点
+    public:
+      frame_id_t id = 0;
+      bool isPinned = false;
+      bool ref = true;  //表示近期有使用
+      bool isDirty = false;
+      Node* next = nullptr;
+      Node* pre = nullptr;
+  };
+
+
+  int max_tot_cnt = 0;
+
+  int pin_cnt = 0;
+
+  int unpin_cnt = 0;  
+
+  Node* unpin_ptr = nullptr;  
+
+  Node* pin_ptr = nullptr; //给一个头指针吧
+  
+  Node* FindUnpin(frame_id_t frame_id);
+
+  Node* FindPin(frame_id_t frame_id);
+
+  void InsertUnpin(Node* ptr);
+
+  void InsertPin(Node* ptr);
+
+  Node* DeleteUnpin(Node* ptr);
+
+  Node* DeletePin(Node* ptr);
 };
 
 }  // namespace bustub
