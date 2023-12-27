@@ -59,8 +59,8 @@ class BPlusTreePage {
  private:
   // member variable, attributes that both internal and leaf page share
   IndexPageType page_type_ __attribute__((__unused__));
-  int size_ __attribute__((__unused__));
-  int max_size_ __attribute__((__unused__));
+  int size_ __attribute__((__unused__));  // number of <key,value> pairs 这个指的是指针的数量（Internal page把第一个keyvalue对的key视作无效）
+  int max_size_ __attribute__((__unused__));  // max number of <key,value> pairs
 };
 
 }  // namespace bustub

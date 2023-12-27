@@ -58,7 +58,43 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto GetNextPageId() const -> page_id_t;
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
+  
+  /**
+   * ******************************************
+   *           以下是自己新增的方法
+   * ******************************************   
+  */
+  
+  /**
+   *
+   * @param index the index
+   * @return the value at the index
+   */
+  auto ValueAt(int index) const -> ValueType;
+  /**
+   *
+   * @param index The index of the key to set. Index must be non-zero.
+   * @param key The new value for key
+   * @param value The new value for value
+   */
+  void InsertKeyValueAt(int index, const KeyType &key, const ValueType &value);
 
+  /**
+   * 传入key，返回对应的value
+   * @return bool 找到了返回true，没找到返回false
+  */
+  auto FindValueForKey(const KeyType &key, ValueType *value, KeyComparator comparator) const -> bool;
+
+  /**
+   * 节点中插入关键值我就直接封装成一个函数了，这样b_plus_tree中逻辑可能会清晰些
+  */
+  void InsertKeyValueNotFull(const KeyType &key, const ValueType &value, KeyComparator comparator);
+
+  /**
+   * split，在leaf节点下插入一个新的key value对
+  */
+  auto SplitInsert(const KeyType &key, const ValueType &value, KeyComparator comparator, BPlusTreeLeafPage* newLeaf)->std::pair<KeyType, KeyType>;
+  
   /**
    * @brief for test only return a string representing all keys in
    * this leaf page formatted as "(key1,key2,key3,...)"

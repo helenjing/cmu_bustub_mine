@@ -74,6 +74,35 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto ValueAt(int index) const -> ValueType;
 
   /**
+   * ************************************
+   *        下面均为自己添加的函数
+   * ************************************
+  */
+
+  /**
+   * 在检查过没有重复key的情况下，并且不满的情况下
+   * 在array中添加key，value对
+  */
+  void InsertKeyValueAt(int index, const KeyType &key, const ValueType &value);
+
+  /**
+   * 内置了一个根据key，查找下一个该走那条edge的方法
+   * @param key 需要查找的key
+   * @return 返回要走的edge（ptr）
+  */
+  auto FindNextNode(const KeyType &key, const KeyComparator & comparator_) const -> ValueType ;
+
+  /**
+   * 节点中插入关键值我就直接封装成一个函数了，这样b_plus_tree中逻辑可能会清晰些
+  */
+  void InsertKeyValueNotFull(const KeyType &key, const ValueType &value, KeyComparator comparator);
+
+  /**
+   * split，在internal节点下插入一个新的key value对
+  */
+  auto SplitInsert(const KeyType &key, const ValueType &value, KeyComparator comparator,  BPlusTreeInternalPage* newInternal)->std::pair<KeyType, KeyType>;
+
+  /**
    * @brief For test only, return a string representing all keys in
    * this internal page, formatted as "(key1,key2,key3,...)"
    *
@@ -100,7 +129,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   }
 
  private:
-  // Flexible array member for page data.
-  MappingType array_[0];
+  // Flexible array member for page data. 
+  MappingType array_[0];  // 知识点！这个叫做柔性数组 https://zhuanlan.zhihu.com/p/247716877
 };
 }  // namespace bustub

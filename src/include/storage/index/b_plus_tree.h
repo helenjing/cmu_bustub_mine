@@ -39,21 +39,39 @@ struct PrintableBPlusTree;
  * that you're modifying or accessing.
  */
 class Context {
+private:
+  BufferPoolManager* bpm_{nullptr};
+  page_id_t header_page_id_{INVALID_PAGE_ID};
  public:
+  Context(BufferPoolManager* buffer_pool_manager, page_id_t header_page_id){
+    bpm_ = buffer_pool_manager;
+    header_page_id_ = header_page_id;
+  }
+  
+
   // When you insert into / remove from the B+ tree, store the write guard of header page here.
   // Remember to drop the header page guard and set it to nullopt when you want to unlock all.
-  std::optional<WritePageGuard> header_page_{std::nullopt};
+  std::optional<WritePageGuard> header_page_w_{std::nullopt};
+  std::optional<ReadPageGuard> header_page_r_{std::nullopt};
 
   // Save the root page id here so that it's easier to know if the current page is the root page.
   page_id_t root_page_id_{INVALID_PAGE_ID};
 
   // Store the write guards of the pages that you're modifying here.
+  // 改了，从元素改成指针了(不能是指针，会变成野指针的)
   std::deque<WritePageGuard> write_set_;
 
   // You may want to use this when getting value, but not necessary.
   std::deque<ReadPageGuard> read_set_;
 
   auto IsRootPage(page_id_t page_id) -> bool { return page_id == root_page_id_; }
+
+  /**
+   * 因为把readGuard转换成write太常见了，所以抽取出来
+  */
+  void PopReadGuardToWriteGuard(WritePageGuard* writeGuard);
+
+  ~Context(); // 应该这么写嘛
 };
 
 #define BPLUSTREE_TYPE BPlusTree<KeyType, ValueType, KeyComparator>
@@ -72,12 +90,14 @@ class BPlusTree {
   // Returns true if this B+ tree has no keys and values.
   auto IsEmpty() const -> bool;
 
+  // TODO(P2-CP1)
   // Insert a key-value pair into this B+ tree.
   auto Insert(const KeyType &key, const ValueType &value, Transaction *txn = nullptr) -> bool;
 
   // Remove a key and its value from this B+ tree.
   void Remove(const KeyType &key, Transaction *txn);
 
+  // TODO(P2-CP2)
   // Return the value associated with a given key
   auto GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *txn = nullptr) -> bool;
 
@@ -141,6 +161,19 @@ class BPlusTree {
    */
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
 
+  // /**
+  //  * 自己写的函数，parse这一页的内容
+  //  * 输入page_id，输出parse的结果，bplustreexxxpage*
+  //  * 用模板来写，极有可能写错
+  // */
+  // template <class T>
+  // auto ParsePage(page_id_t page_id) ->T*{
+  //     BasicPageGuard guard = bpm_->FetchPageBasic(page_id);
+  // // auto a = guard.AsMut<T>();
+  //   return guard.AsMut<T>();  // 这个函数是不是按照一定的格式来解析页内的数据？
+  // }
+
+
   // member variable
   std::string index_name_;
   BufferPoolManager *bpm_;
@@ -148,7 +181,7 @@ class BPlusTree {
   std::vector<std::string> log;  // NOLINT
   int leaf_max_size_;
   int internal_max_size_;
-  page_id_t header_page_id_;
+  page_id_t header_page_id_;  // 存一些关于B+树的meta-data，理解为dummynode吧。（BPlusTreeHeaderPage）
 };
 
 /**
