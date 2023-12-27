@@ -102,10 +102,10 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::FindValueForKey(const KeyType &key, ValueType *
 
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::InsertKeyValueNotFull(const KeyType &key, const ValueType &value, KeyComparator comparator){
-  std::cout << "InsertKeyValueNotFull(Leaf!!)" << std::endl;
+  // std::cout << "InsertKeyValueNotFull(Leaf!!)" << std::endl;
   for(int i = 0; i < GetSize(); i++){
     if(comparator(KeyAt(i),key)==1){ // 查看是否存在key，如果存在key则返回false
-      std::cout << KeyAt(i) << ">" << key << std::endl;
+      // std::cout << KeyAt(i) << ">" << key << std::endl;
       InsertKeyValueAt(i, key, value); // 这里应该不用手动清空吧，手动drop
       return;
     } 
@@ -122,14 +122,14 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::SplitInsert(const KeyType &key, const ValueType
  -> std::pair<KeyType, KeyType>{
   int insert_ind = 0;
   for(  ; insert_ind < GetSize(); insert_ind++){  // 找到插入的定位点
-    std::cout <<  KeyAt(insert_ind) << " " << key << std::endl;
+    // std::cout <<  KeyAt(insert_ind) << " " << key << std::endl;
     if(comparator(KeyAt(insert_ind),key)==1) break;   // -1 1还是记不清（改了）
   } 
 
   // 写入数据，后半 leaf:0~MaxSize/2, newLeaf: MaxSize/2+1~MaxSize
   int movePtr = newLeaf->GetMaxSize()/2+1;
   if(movePtr > insert_ind){ // insert_ind在leaf中
-    std::cout << "insertion in old_leaf..." << std::endl;
+    // std::cout << "insertion in old_leaf..." << std::endl;
     for(int i = movePtr; i <= newLeaf->GetMaxSize(); i++){
       // std::cout << "insert key at:"<< i-1 << "#" << this->KeyAt(i-1)  << " newplace:"<< i-movePtr<< std::endl;
       newLeaf->InsertKeyValueAt(i-movePtr, this->KeyAt(i-1), this->ValueAt(i-1));
@@ -137,7 +137,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::SplitInsert(const KeyType &key, const ValueType
     this->IncreaseSize(-newLeaf->GetMaxSize()+newLeaf->GetMaxSize()/2);  // 这相当于就把leaf中的内容删掉了
     this->InsertKeyValueAt(insert_ind, key, value); // 这里应该不用手动清空吧，手动drop
   }else{  // insert_ind在newLeaf中, 貌似还是有问题
-    std::cout << "insertion in new_leaf..." << std::endl;
+    // std::cout << "insertion in new_leaf..." << std::endl;
     for(int i = movePtr; i <= newLeaf->GetMaxSize(); i++){
       if(i < insert_ind)  newLeaf->InsertKeyValueAt(i-movePtr, this->KeyAt(i), this->ValueAt(i));
       else if(i == insert_ind) newLeaf->InsertKeyValueAt(i-movePtr, key, value); // 这里应该不用手动清空吧，手动drop

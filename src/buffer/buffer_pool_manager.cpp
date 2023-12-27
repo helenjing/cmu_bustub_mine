@@ -62,6 +62,7 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType
   //1. 先从页表中查找是否有这个页
   if(page_table_.find(page_id) != page_table_.end()){
     pages_[page_table_[page_id]].pin_count_++;
+    // std::cout << "exist in buffer pool" << page_table_[page_id] << std::endl;
     replacer_->SetEvictable(page_table_[page_id], false);
     return &pages_[page_table_[page_id]]; // 这个类型乱七八糟的
   }  
@@ -146,14 +147,12 @@ auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard {
 }
 
 auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard { 
-  std::cout << "FetchPageReading..." << std::endl;
+  // std::cout << "FetchPageReading..." << std::endl;
   Page* available_page = FetchPage(page_id);  // 第二个参数应该还是不写
   if(available_page == nullptr) return {this, nullptr};
-  // 上read latch
-  std::cout << "Read Latching..." << std::endl;
-  
+  // 上read latch  
   // available_page->RLatch();
-  std::cout << "Read Latching..." << std::endl;
+  // std::cout << "Read Latching..." << std::endl;
   return {this, available_page}; 
 }
 

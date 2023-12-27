@@ -78,12 +78,12 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   // 2. （迭代地搜索）遍历该node的所有<key,value>对，如果遇到k(i)>key，则选择k(i),v(i).???写错了吧
   // 3. 直到遍历到leafnode（如何判断？）遍历这个page（node）中所有的key，value对
   Context ctx(bpm_, header_page_id_); 
-  std::cout << "GetValue:header_page_id" << header_page_id_ << std::endl;
+  // std::cout << "GetValue:header_page_id" << header_page_id_ << std::endl;
   ReadPageGuard guard = bpm_->FetchPageRead(header_page_id_);
   auto header_page = guard.As<BPlusTreeHeaderPage>();
   ctx.header_page_r_ = std::move(guard);
   ctx.root_page_id_ = header_page->root_page_id_; 
-  std::cout << "GetValue: root_page_id" << ctx.root_page_id_ << std::endl;
+  // std::cout << "GetValue: root_page_id" << ctx.root_page_id_ << std::endl;
   guard = bpm_->FetchPageRead(ctx.root_page_id_);
   auto cur_page = guard.As<BPlusTreePage>();
   ctx.header_page_r_= std::move(guard);
@@ -96,11 +96,11 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
     ctx.read_set_.push_back(std::move(guard));
   }
   //已经到了叶子节点这一层
-  std::cout <<  "GetValue: leaf_page_id" << guard.PageId() << std::endl;
+  // std::cout <<  "GetValue: leaf_page_id" << guard.PageId() << std::endl;
   auto *leaf = reinterpret_cast<const LeafPage *>(cur_page);
   ValueType rtvalue;
   bool flag = leaf->FindValueForKey(key, &rtvalue, comparator_);
-  std::cout << "GetValue: canfindkey" << flag << std::endl;
+  // std::cout << "GetValue: canfindkey" << flag << std::endl;
   if(flag == true) result->push_back(rtvalue);
   return flag;
 }
@@ -117,7 +117,7 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *txn) -> bool {
-  std::cout << "Inserting..." << std::endl;
+  // std::cout << "Inserting..." << std::endl;
   // Declaration of context instance.
   Context ctx(bpm_, header_page_id_);
 
@@ -130,7 +130,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   
   // 树为空
   if(ctx.root_page_id_ == INVALID_PAGE_ID){ 
-    std::cout << "Inserting in an empty tree..." << std::endl;
+    // std::cout << "Inserting in an empty tree..." << std::endl;
     page_id_t cur_page_id;
     // leaf page
     if(bpm_->NewPage(&cur_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
@@ -149,7 +149,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     bpm_->FlushPage(header_page_id_);
     return true;
   }
-  std::cout << "inserting into an un-empty tree..." << std::endl;
+  // std::cout << "inserting into an un-empty tree..." << std::endl;
   // 树不为空, ctx.root_page_id_ != INVALID_PAGE_ID
   auto readGuard = bpm_->FetchPageRead(ctx.root_page_id_);
   auto cur_page = readGuard.As<BPlusTreePage>();
@@ -176,11 +176,11 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     // 先把read转换成write
     WritePageGuard writeGuard;
     ctx.PopReadGuardToWriteGuard(&writeGuard);
-    std::cout << "readGuard=====>writeGuard pageId: " << writeGuard.PageId() << std::endl;
+    // std::cout << "readGuard=====>writeGuard pageId: " << writeGuard.PageId() << std::endl;
     auto cur_w_page = writeGuard.AsMut<BPlusTreePage>();
     // 不会再进行split了
-    if(cur_w_page->GetSize()<=cur_w_page->GetMaxSize()){  //不需要转换成internal 或者 leaf 就能直接getSize了？
-      std::cout << "no more splitings!!!" << std::endl;
+    if(cur_w_page->GetSize()<cur_w_page->GetMaxSize()){  //不需要转换成internal 或者 leaf 就能直接getSize了？
+      // std::cout << "no more splitings!!!" << std::endl;
       if(cur_w_page->IsLeafPage()){ // IsLeafPage donot split
         // 1. 需要改，因为cur_page目前是const，不能转成非const，或许只能通过找pageid重新再fetch，这样才好。
         // 2. 这个cur_page目前指的是什么，是不是变量没有赋值，或者用了先前的变量。
@@ -200,7 +200,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     */
     // 需要split
     if(cur_w_page->IsLeafPage()){ // IsLeafPage split
-      std::cout << "needs to split a Leaf Page...." << std::endl;
+      // std::cout << "needs to split a Leaf Page...." << std::endl;
       LeafPage *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);
       
       // 先New一个Page
@@ -212,7 +212,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
       ctx.write_set_.push_back(std::move(writeGuard));
 
       std::tie(old_key, new_key) = wleaf->SplitInsert(key, value, comparator_, newLeaf);
-      std::cout << "old_key:" << old_key << "new_key_:" << new_key << std::endl;
+      // std::cout << "old_key:" << old_key << "new_key_:" << new_key << std::endl;
 
     }else{  // IsInternalPage
       InternalPage *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
@@ -226,13 +226,13 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
       newInternal->Init(internal_max_size_);
 
       std::tie(old_key, new_key) = winternal->SplitInsert(insert_key, insert_page_id, comparator_, newInternal);
-      std::cout << "old_key: "<< old_key << " new_key: " << new_key << std::endl;
+      // std::cout << "old_key: "<< old_key << " new_key: " << new_key << std::endl;
       ctx.write_set_.push_back(std::move(writeGuard));
     }
     
     
   }
-  std::cout << "allocating a new root page..." << std::endl;
+  // std::cout << "allocating a new root page..." << std::endl;
   // 如果能运行到这儿，说明根节点已经split过了。这时需要new一个page作为新的root，并且将dummynode指向它
   // 先New一个Page
   page_id_t new_root_page_id = INVALID_PAGE_ID;
@@ -243,14 +243,13 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   newRoot->Init(internal_max_size_);
   newRoot->InsertKeyValueNotFull(old_key, ctx.root_page_id_, comparator_); //第一个废节点的value指向old_key
   newRoot->InsertKeyValueNotFull(new_key, new_page_id, comparator_); //插入分裂出的节点, 改了从insert_xxx改成new_xxx了不知道对不对
-  // newRoot->InsertKeyValueNotFull(old_key, ctx.root_page_id_, comparator_); //插入
   // 把dummynode指向newRoot
   writeGuard = bpm_->FetchPageWrite(header_page_id_);
   ctx.header_page_r_ = std::nullopt;
   ctx.header_page_w_ = std::move(writeGuard);
   auto h_page = writeGuard.AsMut<BPlusTreeHeaderPage>();
   h_page->root_page_id_ = new_root_page_id;
-  std::cout << "new_root_page_id: " << h_page->root_page_id_ << std::endl;
+  // std::cout << "new_root_page_id: " << h_page->root_page_id_ << std::endl;
   return true;
 }
 

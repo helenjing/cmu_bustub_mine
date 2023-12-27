@@ -116,24 +116,23 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitInsert(const KeyType &key, const Value
   } 
   // 写入数据，后半 leaf:0~MaxSize/2, newLeaf: MaxSize/2+1~MaxSize
   int movePtr = newInternal->GetMaxSize()/2+1;
-  newInternal->InsertKeyValueAt(0, this->KeyAt(movePtr-1), INVALID_PAGE_ID);
   if(movePtr > insert_ind){ // insert_ind在internal中,internal[0]的哨兵怎么办，最好这些也扔到一个函数里面去吧
-    std::cout<<"insertion in old_internal..." << std::endl;
+    // std::cout<<"insertion in old_internal..." << std::endl;
     for(int i = movePtr; i <= newInternal->GetMaxSize(); i++){  // 逻辑应该是对的
-      newInternal->InsertKeyValueAt(i-movePtr+1, this->KeyAt(i-1), this->ValueAt(i-1));
+      newInternal->InsertKeyValueAt(i-movePtr, this->KeyAt(i-1), this->ValueAt(i-1));
     }
     this->IncreaseSize(-newInternal->GetMaxSize()+newInternal->GetMaxSize()/2);  // 这相当于就把leaf中的内容删掉了
     this->InsertKeyValueAt(insert_ind, key, value); // 这里有问题，key也不是参数key而是下一级的最头头的那个key
   }else{  // insert_ind在newLeaf中, 貌似还是有问题
-  std::cout << "insertion in new_internal..." << std::endl;
+  // std::cout << "insertion in new_internal..." << std::endl;
     for(int i = movePtr; i <= newInternal->GetMaxSize(); i++){
-      if(i < insert_ind)  newInternal->InsertKeyValueAt(i-movePtr+1, this->KeyAt(i), this->ValueAt(i));
-      else if(i == insert_ind) newInternal->InsertKeyValueAt(i-movePtr+1, key, value); // 这里应该不用手动清空吧，手动drop
+      if(i < insert_ind)  newInternal->InsertKeyValueAt(i-movePtr, this->KeyAt(i), this->ValueAt(i));
+      else if(i == insert_ind) newInternal->InsertKeyValueAt(i-movePtr, key, value); // 这里应该不用手动清空吧，手动drop
       else newInternal->InsertKeyValueAt(i-movePtr+1, this->KeyAt(i-1), this->ValueAt(i-1));
     }
     this->IncreaseSize(-newInternal->GetMaxSize()+newInternal->GetMaxSize()/2+1);  // 这相当于就把leaf中的内容删掉了
   }
-  return {this->KeyAt(1),newInternal->KeyAt(1)};  // 因为最开始的0是废掉的。
+  return {this->KeyAt(1),newInternal->KeyAt(0)};  // 因为最开始的0是废掉的。
 }
 
 // valuetype for internalNode should be page id_t
