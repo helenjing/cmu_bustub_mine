@@ -82,7 +82,7 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   ReadPageGuard guard = bpm_->FetchPageRead(header_page_id_);
   auto header_page = guard.As<BPlusTreeHeaderPage>();
   ctx.header_page_r_ = std::move(guard);
-  ctx.root_page_id_ = header_page->root_page_id_; // 类型不匹配
+  ctx.root_page_id_ = header_page->root_page_id_; 
   std::cout << "GetValue: root_page_id" << ctx.root_page_id_ << std::endl;
   guard = bpm_->FetchPageRead(ctx.root_page_id_);
   auto cur_page = guard.As<BPlusTreePage>();
@@ -179,7 +179,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     std::cout << "readGuard=====>writeGuard pageId: " << writeGuard.PageId() << std::endl;
     auto cur_w_page = writeGuard.AsMut<BPlusTreePage>();
     // 不会再进行split了
-    if(cur_w_page->GetSize()!=cur_w_page->GetMaxSize()){  //不需要转换成internal 或者 leaf 就能直接getSize了？
+    if(cur_w_page->GetSize()<=cur_w_page->GetMaxSize()){  //不需要转换成internal 或者 leaf 就能直接getSize了？
       std::cout << "no more splitings!!!" << std::endl;
       if(cur_w_page->IsLeafPage()){ // IsLeafPage donot split
         // 1. 需要改，因为cur_page目前是const，不能转成非const，或许只能通过找pageid重新再fetch，这样才好。
@@ -241,9 +241,9 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   InternalPage* newRoot = writeGuard.AsMut<InternalPage>();
   ctx.write_set_.push_back(std::move(writeGuard));
   newRoot->Init(internal_max_size_);
-  newRoot->InsertKeyValueNotFull(new_key, INVALID_PAGE_ID, comparator_); //internal 中的第一个节点（key没用）
+  newRoot->InsertKeyValueNotFull(old_key, ctx.root_page_id_, comparator_); //第一个废节点的value指向old_key
   newRoot->InsertKeyValueNotFull(new_key, new_page_id, comparator_); //插入分裂出的节点, 改了从insert_xxx改成new_xxx了不知道对不对
-  newRoot->InsertKeyValueNotFull(old_key, ctx.root_page_id_, comparator_); //插入
+  // newRoot->InsertKeyValueNotFull(old_key, ctx.root_page_id_, comparator_); //插入
   // 把dummynode指向newRoot
   writeGuard = bpm_->FetchPageWrite(header_page_id_);
   ctx.header_page_r_ = std::nullopt;
