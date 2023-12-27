@@ -1,12 +1,40 @@
 #include <sstream>
 #include <string>
+#include <tuple>
 
 #include "common/exception.h"
 #include "common/logger.h"
 #include "common/rid.h"
 #include "storage/index/b_plus_tree.h"
+// #include "b_plus_tree.h"
 
 namespace bustub {
+
+Context::~Context(){
+  // 释放资源，read_set_, write_set_
+  // std::cout<< "~Context" << std::endl;
+  while(!read_set_.empty()){
+    read_set_.front().Drop();
+    read_set_.pop_front();
+  }
+  while(!write_set_.empty()){
+    bpm_->FlushPage(write_set_.front().PageId());
+    write_set_.front().Drop(); //相当于unpin了，latch也解掉了？
+    write_set_.pop_front();
+  }
+  if(header_page_w_ != std::nullopt){
+    // auto header_page_r = reinterpret_cast<BPlusTreeHeaderPage *>(bpm_->FetchPage(header_page_id_)->GetData());
+    bool flag = bpm_->FlushPage(header_page_id_);
+    bpm_->UnpinPage(header_page_id_, false);
+    // bpm_->DeletePage(header_page_id_);
+  }
+}
+void Context::PopReadGuardToWriteGuard(WritePageGuard *writeGuard){
+  if(read_set_.empty()) throw Exception("read_set_ is empty.");
+  *writeGuard = std::move(bpm_->FetchPageWrite(read_set_.back().PageId()));
+  read_set_.pop_back();
+  write_set_.push_back(std::move(*writeGuard));  // 改了移动构造，但是不懂移动构造是什么
+}
 
 INDEX_TEMPLATE_ARGUMENTS
 BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPoolManager *buffer_pool_manager,
@@ -26,7 +54,13 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPool
  * Helper function to decide whether current b+tree is empty
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return true; }
+auto BPLUSTREE_TYPE::IsEmpty() const -> bool { 
+  // 如果这个指的是一整棵树，而非（所在）子树为空的话
+  BasicPageGuard guard = bpm_->FetchPageBasic(header_page_id_);
+  auto root_page = guard.AsMut<BPlusTreeHeaderPage>();  // 这个函数是不是按照一定的格式来解析页内的数据？
+  return root_page->root_page_id_==INVALID_PAGE_ID;
+  
+}
 /*****************************************************************************
  * SEARCH
  *****************************************************************************/
@@ -35,12 +69,40 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return true; }
  * This method is used for point query
  * @return : true means key exists
  */
+// 完全没考虑多线程，加锁的问题，template好像也写错了导致cur_page无法识别类型
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *txn) -> bool {
-  // Declaration of context instance.
-  Context ctx;
-  (void)ctx;
-  return false;
+  // Declaration of context instance.存储一些关于这棵树地metadata这样不用反复地IO了
+  // 1. 先读取dummy_page找到root在哪儿，应该是上锁了，但是怎么解锁啊
+  // 1. 获得节点：拿到page_id，fetchPage，将这一页的数据解析为InternalPage或者是LeafPage的模式。（如何确定是叶子节点还是其他）
+  // 2. （迭代地搜索）遍历该node的所有<key,value>对，如果遇到k(i)>key，则选择k(i),v(i).???写错了吧
+  // 3. 直到遍历到leafnode（如何判断？）遍历这个page（node）中所有的key，value对
+  Context ctx(bpm_, header_page_id_); 
+  std::cout << "GetValue:header_page_id" << header_page_id_ << std::endl;
+  ReadPageGuard guard = bpm_->FetchPageRead(header_page_id_);
+  auto header_page = guard.As<BPlusTreeHeaderPage>();
+  ctx.header_page_r_ = std::move(guard);
+  ctx.root_page_id_ = header_page->root_page_id_; // 类型不匹配
+  std::cout << "GetValue: root_page_id" << ctx.root_page_id_ << std::endl;
+  guard = bpm_->FetchPageRead(ctx.root_page_id_);
+  auto cur_page = guard.As<BPlusTreePage>();
+  ctx.header_page_r_= std::move(guard);
+  while(!cur_page->IsLeafPage()){  // 一定要写非递归的吗，还是可以写递归的？
+    // 遍历这个node，比较
+    auto *internal = reinterpret_cast<const InternalPage *>(cur_page);
+    auto next_page_id = internal->FindNextNode(key, comparator_);
+    guard = bpm_->FetchPageRead(next_page_id);
+    cur_page = guard.As<BPlusTreePage>();
+    ctx.read_set_.push_back(std::move(guard));
+  }
+  //已经到了叶子节点这一层
+  std::cout <<  "GetValue: leaf_page_id" << guard.PageId() << std::endl;
+  auto *leaf = reinterpret_cast<const LeafPage *>(cur_page);
+  ValueType rtvalue;
+  bool flag = leaf->FindValueForKey(key, &rtvalue, comparator_);
+  std::cout << "GetValue: canfindkey" << flag << std::endl;
+  if(flag == true) result->push_back(rtvalue);
+  return flag;
 }
 
 /*****************************************************************************
@@ -55,10 +117,141 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *txn) -> bool {
+  std::cout << "Inserting..." << std::endl;
   // Declaration of context instance.
-  Context ctx;
-  (void)ctx;
-  return false;
+  Context ctx(bpm_, header_page_id_);
+
+  ReadPageGuard guard = bpm_->FetchPageRead(header_page_id_); //不可以是xLock，否则根本不会有并发可言
+  auto header_page = guard.As<BPlusTreeHeaderPage>();
+  
+  
+  ctx.header_page_r_ = std::move(guard);  
+  ctx.root_page_id_ = header_page->root_page_id_;
+  
+  // 树为空
+  if(ctx.root_page_id_ == INVALID_PAGE_ID){ 
+    std::cout << "Inserting in an empty tree..." << std::endl;
+    page_id_t cur_page_id;
+    // leaf page
+    if(bpm_->NewPage(&cur_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
+    WritePageGuard writeGuard = bpm_->FetchPageWrite(cur_page_id);
+    auto Leaf = writeGuard.AsMut<LeafPage>();
+    ctx.write_set_.push_back(std::move(writeGuard));
+    // initialize
+    Leaf->Init(leaf_max_size_);
+    Leaf->InsertKeyValueNotFull(key, value, comparator_);
+    // 更新dummynode的ptr
+    WritePageGuard wG = bpm_->FetchPageWrite(header_page_id_);
+    ctx.header_page_r_ = std::nullopt;
+    ctx.header_page_w_ = std::move(wG);
+    auto header_page_1 = wG.AsMut<BPlusTreeHeaderPage>();
+    header_page_1->root_page_id_ = cur_page_id;
+    bpm_->FlushPage(header_page_id_);
+    return true;
+  }
+  std::cout << "inserting into an un-empty tree..." << std::endl;
+  // 树不为空, ctx.root_page_id_ != INVALID_PAGE_ID
+  auto readGuard = bpm_->FetchPageRead(ctx.root_page_id_);
+  auto cur_page = readGuard.As<BPlusTreePage>();
+  while(!cur_page->IsLeafPage()){  // 一定要写非递归的吗，还是可以写递归的？
+    // 遍历这个node，比较
+    auto *rinternal = reinterpret_cast<const InternalPage *>(cur_page);
+    page_id_t next_page_id = rinternal->FindNextNode(key, comparator_);
+    ctx.read_set_.push_back(std::move(readGuard));
+    readGuard = bpm_->FetchPageRead(next_page_id);
+    cur_page = readGuard.As<BPlusTreePage>();
+  }
+  ctx.read_set_.push_back(std::move(readGuard)); // 这次push_back的是叶子节点的guard
+  //已经到了叶子节点这一层
+  auto *rleaf = reinterpret_cast<const LeafPage *>(cur_page);
+  ValueType tmpValue;
+  if(rleaf->FindValueForKey(key, &tmpValue, comparator_))  return false; // key已经存在
+
+  page_id_t new_page_id = INVALID_PAGE_ID;  // split后产生的page_id放在这里
+  KeyType new_key;  // 存split后产生的page的第一个key
+  KeyType old_key;  // 存split后老page的第一个key
+  while(!ctx.read_set_.empty()){ 
+
+    // 首先把read_set_转化成write_set
+    // 先把read转换成write
+    WritePageGuard writeGuard;
+    ctx.PopReadGuardToWriteGuard(&writeGuard);
+    std::cout << "readGuard=====>writeGuard pageId: " << writeGuard.PageId() << std::endl;
+    auto cur_w_page = writeGuard.AsMut<BPlusTreePage>();
+    // 不会再进行split了
+    if(cur_w_page->GetSize()!=cur_w_page->GetMaxSize()){  //不需要转换成internal 或者 leaf 就能直接getSize了？
+      std::cout << "no more splitings!!!" << std::endl;
+      if(cur_w_page->IsLeafPage()){ // IsLeafPage donot split
+        // 1. 需要改，因为cur_page目前是const，不能转成非const，或许只能通过找pageid重新再fetch，这样才好。
+        // 2. 这个cur_page目前指的是什么，是不是变量没有赋值，或者用了先前的变量。
+        auto *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);  // 这里不能再const LeafPage*了，因为const不能改变对象的内容。
+        wleaf->InsertKeyValueNotFull(key, value, comparator_);
+      }else{  // IsInternalPage donot split
+        auto *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
+        winternal->InsertKeyValueNotFull(new_key, new_page_id, comparator_);
+      }
+      return true;
+    }
+    
+    /*
+     **************************************************************
+                  这条分界线以上的代码出错的概率极小
+     **************************************************************
+    */
+    // 需要split
+    if(cur_w_page->IsLeafPage()){ // IsLeafPage split
+      std::cout << "needs to split a Leaf Page...." << std::endl;
+      LeafPage *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);
+      
+      // 先New一个Page
+      if(bpm_->NewPage(&new_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
+      writeGuard = bpm_->FetchPageWrite(new_page_id);
+      LeafPage* newLeaf = writeGuard.AsMut<LeafPage>();
+      // initialize
+      newLeaf->Init(leaf_max_size_);
+      ctx.write_set_.push_back(std::move(writeGuard));
+
+      std::tie(old_key, new_key) = wleaf->SplitInsert(key, value, comparator_, newLeaf);
+      std::cout << "old_key:" << old_key << "new_key_:" << new_key << std::endl;
+
+    }else{  // IsInternalPage
+      InternalPage *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
+      KeyType insert_key = new_key;
+      page_id_t insert_page_id = new_page_id; // 这个一定是有值的，为了防止newpage的时候把它冲掉
+
+      // 先New一个Page
+      if(bpm_->NewPage(&new_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
+      writeGuard = bpm_->FetchPageWrite(new_page_id);
+      auto newInternal = writeGuard.AsMut<InternalPage>();
+      newInternal->Init(internal_max_size_);
+
+      std::tie(old_key, new_key) = winternal->SplitInsert(insert_key, insert_page_id, comparator_, newInternal);
+      std::cout << "old_key: "<< old_key << " new_key: " << new_key << std::endl;
+      ctx.write_set_.push_back(std::move(writeGuard));
+    }
+    
+    
+  }
+  std::cout << "allocating a new root page..." << std::endl;
+  // 如果能运行到这儿，说明根节点已经split过了。这时需要new一个page作为新的root，并且将dummynode指向它
+  // 先New一个Page
+  page_id_t new_root_page_id = INVALID_PAGE_ID;
+  if(bpm_->NewPage(&new_root_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
+  WritePageGuard writeGuard = bpm_->FetchPageWrite(new_root_page_id);
+  InternalPage* newRoot = writeGuard.AsMut<InternalPage>();
+  ctx.write_set_.push_back(std::move(writeGuard));
+  newRoot->Init(internal_max_size_);
+  newRoot->InsertKeyValueNotFull(new_key, INVALID_PAGE_ID, comparator_); //internal 中的第一个节点（key没用）
+  newRoot->InsertKeyValueNotFull(new_key, new_page_id, comparator_); //插入分裂出的节点, 改了从insert_xxx改成new_xxx了不知道对不对
+  newRoot->InsertKeyValueNotFull(old_key, ctx.root_page_id_, comparator_); //插入
+  // 把dummynode指向newRoot
+  writeGuard = bpm_->FetchPageWrite(header_page_id_);
+  ctx.header_page_r_ = std::nullopt;
+  ctx.header_page_w_ = std::move(writeGuard);
+  auto h_page = writeGuard.AsMut<BPlusTreeHeaderPage>();
+  h_page->root_page_id_ = new_root_page_id;
+  std::cout << "new_root_page_id: " << h_page->root_page_id_ << std::endl;
+  return true;
 }
 
 /*****************************************************************************
@@ -74,7 +267,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   // Declaration of context instance.
-  Context ctx;
+  Context ctx(bpm_, header_page_id_);
   (void)ctx;
 }
 
@@ -109,7 +302,11 @@ auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { return INDEXITERATOR_TYPE(); 
  * @return Page id of the root of this tree
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { return 0; }
+auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { 
+  ReadPageGuard guard = bpm_->FetchPageRead(header_page_id_); //不可以是xLock，否则根本不会有并发可言
+  auto header_page = guard.As<BPlusTreeHeaderPage>();
+  return header_page->root_page_id_; 
+}
 
 /*****************************************************************************
  * UTILITIES AND DEBUG
@@ -368,4 +565,11 @@ template class BPlusTree<GenericKey<32>, RID, GenericComparator<32>>;
 
 template class BPlusTree<GenericKey<64>, RID, GenericComparator<64>>;
 
+/**
+   * 自己写的函数，parse这一页的内容
+   * 输入page_id，输出parse的结果，bplustreexxxpage*
+   * 用模板来写，极有可能写错 不写了，干脆直接调guard的函数吧，受不鸟呢
+*/
+
 }  // namespace bustub
+
