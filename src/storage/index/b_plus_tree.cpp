@@ -192,12 +192,6 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
       }
       return true;
     }
-    
-    /*
-     **************************************************************
-                  这条分界线以上的代码出错的概率极小
-     **************************************************************
-    */
     // 需要split
     if(cur_w_page->IsLeafPage()){ // IsLeafPage split
       // std::cout << "needs to split a Leaf Page...." << std::endl;
@@ -212,6 +206,9 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
       ctx.write_set_.push_back(std::move(writeGuard));
 
       std::tie(old_key, new_key) = wleaf->SplitInsert(key, value, comparator_, newLeaf);
+      // siblings
+      newLeaf->next_page_id_ = wleaf->next_page_id_;
+      wleaf->next_page_id_ = new_page_id;
       // std::cout << "old_key:" << old_key << "new_key_:" << new_key << std::endl;
 
     }else{  // IsInternalPage
