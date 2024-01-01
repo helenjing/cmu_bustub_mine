@@ -90,17 +90,19 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   while(!cur_page->IsLeafPage()){  // 一定要写非递归的吗，还是可以写递归的？
     // 遍历这个node，比较
     auto *internal = reinterpret_cast<const InternalPage *>(cur_page);
+    std::cout <<  "GetValue: internal_page_id" << guard.PageId()  << "keyAt(1): " << internal->KeyAt(1) << std::endl;
     auto next_page_id = internal->FindNextNode(key, comparator_);
     guard = bpm_->FetchPageRead(next_page_id);
     cur_page = guard.As<BPlusTreePage>();
     ctx.read_set_.push_back(std::move(guard));
   }
   //已经到了叶子节点这一层
-  // std::cout <<  "GetValue: leaf_page_id" << guard.PageId() << std::endl;
   auto *leaf = reinterpret_cast<const LeafPage *>(cur_page);
+  std::cout <<  "GetValue: leaf_page_id" << guard.PageId()  << "KeyAt(0): " << leaf->KeyAt(0) << std::endl;
+  
   ValueType rtvalue;
   bool flag = leaf->FindValueForKey(key, &rtvalue, comparator_);
-  // std::cout << "GetValue: canfindkey" << flag << std::endl;
+  std::cout << "GetValue: canfindkey" << flag << std::endl;
   if(flag == true) result->push_back(rtvalue);
   return flag;
 }
@@ -196,22 +198,22 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     if(cur_w_page->IsLeafPage()){ // IsLeafPage split
       // std::cout << "needs to split a Leaf Page...." << std::endl;
       LeafPage *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);
-      
+      // std::cout <<"bplustree" << wleaf->GetSize() <<" " << cur_w_page->GetSize()<< std::endl;
       // 先New一个Page
       if(bpm_->NewPage(&new_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
+      // std::cout <<"bplustree" << wleaf->GetSize() <<" " << cur_w_page->GetSize()<< std::endl;
       writeGuard = bpm_->FetchPageWrite(new_page_id);
       LeafPage* newLeaf = writeGuard.AsMut<LeafPage>();
+      // std::cout << wleaf << " " << newLeaf << std::endl;
       // initialize
       newLeaf->Init(leaf_max_size_);
       ctx.write_set_.push_back(std::move(writeGuard));
+      std::tie(old_key, new_key) = wleaf->SplitInsert(key, value, comparator_, newLeaf, new_page_id);
 
-      std::tie(old_key, new_key) = wleaf->SplitInsert(key, value, comparator_, newLeaf);
-      // siblings
-      newLeaf->next_page_id_ = wleaf->next_page_id_;
-      wleaf->next_page_id_ = new_page_id;
       // std::cout << "old_key:" << old_key << "new_key_:" << new_key << std::endl;
 
     }else{  // IsInternalPage
+      // std::cout << "needs to split a Internal Page...." << std::endl;
       InternalPage *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
       KeyType insert_key = new_key;
       page_id_t insert_page_id = new_page_id; // 这个一定是有值的，为了防止newpage的时候把它冲掉
@@ -264,7 +266,19 @@ INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   // Declaration of context instance.
   Context ctx(bpm_, header_page_id_);
-  (void)ctx;
+  
+  ReadPageGuard guard = bpm_->FetchPageRead(header_page_id_); //不可以是xLock，否则根本不会有并发可言
+  auto header_page = guard.As<BPlusTreeHeaderPage>();
+  
+  
+  ctx.header_page_r_ = std::move(guard);  
+  ctx.root_page_id_ = header_page->root_page_id_;
+  
+  // 树为空
+  if(ctx.root_page_id_ == INVALID_PAGE_ID){ 
+    std::cout << "Deleting an empty tree..." << std::endl;
+    return;
+  }
 }
 
 /*****************************************************************************
@@ -374,6 +388,7 @@ void BPLUSTREE_TYPE::Print(BufferPoolManager *bpm) {
 
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::PrintTree(page_id_t page_id, const BPlusTreePage *page) {
+  std::cout << "printTree xixi" << std::endl;
   if (page->IsLeafPage()) {
     auto *leaf = reinterpret_cast<const LeafPage *>(page);
     std::cout << "Leaf Page: " << page_id << "\tNext: " << leaf->GetNextPageId() << std::endl;
@@ -517,14 +532,16 @@ auto BPLUSTREE_TYPE::DrawBPlusTree() -> std::string {
   }
 
   PrintableBPlusTree p_root = ToPrintableBPlusTree(GetRootPageId());
+  std::cout << "hahaha" << std::endl;
   std::ostringstream out_buf;
   p_root.Print(out_buf);
-
+  std::cout << "xixi" << std::endl;
   return out_buf.str();
 }
 
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree {
+  std::cout << "ToPrintableBPlusTree"<< std::endl;
   auto root_page_guard = bpm_->FetchPageBasic(root_id);
   auto root_page = root_page_guard.template As<BPlusTreePage>();
   PrintableBPlusTree proot;
@@ -542,12 +559,14 @@ auto BPLUSTREE_TYPE::ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTr
   proot.keys_ = internal_page->ToString();
   proot.size_ = 0;
   for (int i = 0; i < internal_page->GetSize(); i++) {
+    std::cout << internal_page->KeyAt(1)<< " " << internal_page->ValueAt(i) << " " << internal_page->GetSize()<<std::endl;
     page_id_t child_id = internal_page->ValueAt(i);
+    std::cout << "wuwu" << std::endl;
     PrintableBPlusTree child_node = ToPrintableBPlusTree(child_id);
     proot.size_ += child_node.size_;
     proot.children_.push_back(child_node);
   }
-
+  std::cout << "wawa" << std::endl;
   return proot;
 }
 

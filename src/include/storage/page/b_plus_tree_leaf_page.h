@@ -93,7 +93,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   /**
    * split，在leaf节点下插入一个新的key value对
   */
-  auto SplitInsert(const KeyType &key, const ValueType &value, KeyComparator comparator, BPlusTreeLeafPage* newLeaf)->std::pair<KeyType, KeyType>;
+  auto SplitInsert(const KeyType &key, const ValueType &value, KeyComparator comparator, BPlusTreeLeafPage* newLeaf, page_id_t new_page_id)->std::pair<KeyType, KeyType>;
   
   /**
    * @brief for test only return a string representing all keys in
@@ -121,7 +121,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   }
 
  private:
-  page_id_t next_page_id_;
+  page_id_t next_page_id_{INVALID_PAGE_ID};
   // Flexible array member for page data.
   MappingType array_[0];
 };

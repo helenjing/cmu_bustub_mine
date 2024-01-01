@@ -60,6 +60,7 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) {
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { 
   if(index >= GetSize())  throw Exception("array_ index out of range...");
+  // std::cout << "value at: "<< index << "= " << array_[index].second << std::endl;
   return array_[index].second; // 好像不对
  }
 
@@ -70,7 +71,8 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType {
   */
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertKeyValueAt(int index, const KeyType &key, const ValueType &value){
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertKeyValueAt(int index, /*const*/ KeyType /*&*/key, /*const*/ ValueType /*&*/value){
+  std::cout << index << " " << GetSize() << std::endl;
   if(index > GetSize() || index < 0)  throw Exception("array_ index out of range...");
   if(GetSize()==GetMaxSize()) throw Exception("array_ is full, cannot insert into this page...");
   int ptr = GetSize();  // 这个是最后一个元素往后挪完的位置
@@ -97,7 +99,8 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::FindNextNode(const KeyType &key, const KeyC
   
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertKeyValueNotFull(const KeyType &key, const ValueType &value, KeyComparator comparator){
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertKeyValueNotFull(/*const*/ KeyType &key, /*const*/ ValueType &value, KeyComparator comparator){
+  // std::cout << "insertNotFull: " << key << " " << value << std::endl;
   for(int i = 1; i < GetSize(); i++){
     if(comparator(KeyAt(i),key)==1){ // 查看是否存在key，如果存在key则返回false
       InsertKeyValueAt(i, key, value); // 这里应该不用手动清空吧，手动drop
@@ -128,7 +131,7 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitInsert(const KeyType &key, const Value
     for(int i = movePtr; i <= newInternal->GetMaxSize(); i++){
       if(i < insert_ind)  newInternal->InsertKeyValueAt(i-movePtr, this->KeyAt(i), this->ValueAt(i));
       else if(i == insert_ind) newInternal->InsertKeyValueAt(i-movePtr, key, value); // 这里应该不用手动清空吧，手动drop
-      else newInternal->InsertKeyValueAt(i-movePtr+1, this->KeyAt(i-1), this->ValueAt(i-1));
+      else newInternal->InsertKeyValueAt(i-movePtr, this->KeyAt(i-1), this->ValueAt(i-1));
     }
     this->IncreaseSize(-newInternal->GetMaxSize()+newInternal->GetMaxSize()/2+1);  // 这相当于就把leaf中的内容删掉了
   }

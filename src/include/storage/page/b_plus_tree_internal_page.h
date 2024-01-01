@@ -83,7 +83,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    * 在检查过没有重复key的情况下，并且不满的情况下
    * 在array中添加key，value对
   */
-  void InsertKeyValueAt(int index, const KeyType &key, const ValueType &value);
+  void InsertKeyValueAt(int index, /*const*/ KeyType /*&*/key, /*const*/ ValueType /*&*/value);
 
   /**
    * 内置了一个根据key，查找下一个该走那条edge的方法
@@ -95,7 +95,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   /**
    * 节点中插入关键值我就直接封装成一个函数了，这样b_plus_tree中逻辑可能会清晰些
   */
-  void InsertKeyValueNotFull(const KeyType &key, const ValueType &value, KeyComparator comparator);
+  void InsertKeyValueNotFull(/*const*/ KeyType &key, /*const*/ ValueType &value, KeyComparator comparator);
 
   /**
    * split，在internal节点下插入一个新的key value对
