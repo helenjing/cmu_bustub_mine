@@ -279,6 +279,81 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
     std::cout << "Deleting an empty tree..." << std::endl;
     return;
   }
+
+  std::cout << "Deleting into an un-empty tree..." << std::endl;
+  // 树不为空, ctx.root_page_id_ != INVALID_PAGE_ID
+  auto readGuard = bpm_->FetchPageRead(ctx.root_page_id_);
+  auto cur_page = readGuard.As<BPlusTreePage>();
+  while(!cur_page->IsLeafPage()){  // 一定要写非递归的吗，还是可以写递归的？
+    // 遍历这个node，比较
+    auto *rinternal = reinterpret_cast<const InternalPage *>(cur_page);
+    page_id_t next_page_id = rinternal->FindNextNode(key, comparator_);
+    ctx.read_set_.push_back(std::move(readGuard));
+    readGuard = bpm_->FetchPageRead(next_page_id);
+    cur_page = readGuard.As<BPlusTreePage>();
+  }
+  ctx.read_set_.push_back(std::move(readGuard)); // 这次push_back的是叶子节点的guard
+  //已经到了叶子节点这一层
+  auto *rleaf = reinterpret_cast<const LeafPage *>(cur_page);
+  ValueType tmpValue;
+  if(rleaf->FindValueForKey(key, &tmpValue, comparator_)==false)  return; // key不存在
+  while(!ctx.read_set_.empty()){ 
+
+    // 首先把read_set_转化成write_set
+    // 先把read转换成write
+    WritePageGuard writeGuard;
+    ctx.PopReadGuardToWriteGuard(&writeGuard);
+    // std::cout << "readGuard=====>writeGuard pageId: " << writeGuard.PageId() << std::endl;
+    auto cur_w_page = writeGuard.AsMut<BPlusTreePage>();
+    // 不会再进行merge了
+    if(cur_w_page->GetSize()>cur_w_page->GetMinSize() || writeGuard.PageId()==ctx.root_page_id_){  //不需要转换成internal 或者 leaf 就能直接getSize了？
+      std::cout << "no more mergings!!!" << std::endl;
+      if(cur_w_page->IsLeafPage()){ // IsLeafPage donot split
+        auto *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);  // 这里不能再const LeafPage*了，因为const不能改变对象的内容。
+        wleaf->DeleteWithoutMerge(key, comparator_);
+      }else{  // IsInternalPage donot split
+        // auto *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
+        // winternal->DeleteWithoutMerge(new_key, comparator_);
+      }
+      return;
+    }
+    // // 需要merge
+    // if(cur_w_page->IsLeafPage()){ // IsLeafPage split
+    //   std::cout << "needs to split a Leaf Page...." << std::endl;
+    //   LeafPage *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);
+    //   std::cout <<"bplustree" << wleaf->GetSize() <<" " << cur_w_page->GetSize()<< std::endl;
+    //   先New一个Page
+    //   if(bpm_->NewPage(&new_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
+    //   std::cout <<"bplustree" << wleaf->GetSize() <<" " << cur_w_page->GetSize()<< std::endl;
+    //   writeGuard = bpm_->FetchPageWrite(new_page_id);
+    //   LeafPage* newLeaf = writeGuard.AsMut<LeafPage>();
+    //   std::cout << wleaf << " " << newLeaf << std::endl;
+    //   initialize
+    //   newLeaf->Init(leaf_max_size_);
+    //   ctx.write_set_.push_back(std::move(writeGuard));
+    //   std::tie(old_key, new_key) = wleaf->SplitInsert(key, value, comparator_, newLeaf, new_page_id);
+
+    //   std::cout << "old_key:" << old_key << "new_key_:" << new_key << std::endl;
+
+    // }else{  // IsInternalPage
+    //   std::cout << "needs to split a Internal Page...." << std::endl;
+    //   InternalPage *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
+    //   KeyType insert_key = new_key;
+    //   page_id_t insert_page_id = new_page_id; // 这个一定是有值的，为了防止newpage的时候把它冲掉
+
+    //   先New一个Page
+    //   if(bpm_->NewPage(&new_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
+    //   writeGuard = bpm_->FetchPageWrite(new_page_id);
+    //   auto newInternal = writeGuard.AsMut<InternalPage>();
+    //   newInternal->Init(internal_max_size_);
+
+    //   std::tie(old_key, new_key) = winternal->SplitInsert(insert_key, insert_page_id, comparator_, newInternal);
+    //   std::cout << "old_key: "<< old_key << " new_key: " << new_key << std::endl;
+    //   ctx.write_set_.push_back(std::move(writeGuard));
+    // }
+    
+    
+  }
 }
 
 /*****************************************************************************

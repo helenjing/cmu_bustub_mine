@@ -71,6 +71,12 @@ class BPlusTreeLeafPage : public BPlusTreePage {
    * @return the value at the index
    */
   auto ValueAt(int index) const -> ValueType;
+
+  /**
+   * *******************************************
+   *                  INSERTION
+   * *******************************************
+  */
   /**
    *
    * @param index The index of the key to set. Index must be non-zero.
@@ -95,6 +101,19 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   */
   auto SplitInsert(const KeyType &key, const ValueType &value, KeyComparator comparator, BPlusTreeLeafPage* newLeaf, page_id_t new_page_id)->std::pair<KeyType, KeyType>;
   
+  /**
+   * *******************************************
+   *                 DELETION
+   * *******************************************
+  */
+ /**
+  * 在原节点上删除key value对，无需再进行merge
+ */
+  void DeleteWithoutMerge(const KeyType &key, KeyComparator comparator);
+
+  void DeleteKeyValueAt(int index);
+
+
   /**
    * @brief for test only return a string representing all keys in
    * this leaf page formatted as "(key1,key2,key3,...)"

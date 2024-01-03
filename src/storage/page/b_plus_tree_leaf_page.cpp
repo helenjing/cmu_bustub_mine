@@ -126,7 +126,7 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::InsertKeyValueNotFull(const KeyType &key, const
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::SplitInsert(const KeyType &key, const ValueType &value, KeyComparator comparator, BPlusTreeLeafPage* newLeaf, page_id_t new_page_id)
  -> std::pair<KeyType, KeyType>{
-  std::cout <<"leafPage:splitInsert:GetOldSize" << this->GetSize() << std::endl;
+  // std::cout <<"leafPage:splitInsert:GetOldSize" << this->GetSize() << std::endl;
   int insert_ind = 0;
   for(  ; insert_ind < this->GetSize(); insert_ind++){  // 找到插入的定位点
     
@@ -136,7 +136,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::SplitInsert(const KeyType &key, const ValueType
   // 写入数据，后半 leaf:0~MaxSize/2, newLeaf: MaxSize/2+1~MaxSize
   int movePtr = newLeaf->GetMaxSize()/2+1;
   if(movePtr > insert_ind){ // insert_ind在leaf中
-    std::cout << "insertion in old_leaf..." << std::endl;
+    // std::cout << "insertion in old_leaf..." << std::endl;
     for(int i = movePtr; i <= newLeaf->GetMaxSize(); i++){
       // std::cout << "insert key at:"<< i-1 << "#" << this->KeyAt(i-1)  << " newplace:"<< i-movePtr<< std::endl;
       newLeaf->InsertKeyValueAt(i-movePtr, this->KeyAt(i-1), this->ValueAt(i-1));
@@ -145,7 +145,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::SplitInsert(const KeyType &key, const ValueType
     this->SetSize(this->GetMaxSize()/2);
     this->InsertKeyValueAt(insert_ind, key, value); // 这里应该不用手动清空吧，手动drop
   }else{  // insert_ind在newLeaf中, 貌似还是有问题
-    std::cout << "insertion in new_leaf..." << std::endl;
+    // std::cout << "insertion in new_leaf..." << std::endl;
     for(int i = movePtr; i <= newLeaf->GetMaxSize(); i++){
       if(i < insert_ind)  newLeaf->InsertKeyValueAt(i-movePtr, this->KeyAt(i), this->ValueAt(i));
       else if(i == insert_ind) newLeaf->InsertKeyValueAt(i-movePtr, key, value); // 这里应该不用手动清空吧，手动drop
@@ -161,6 +161,29 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::SplitInsert(const KeyType &key, const ValueType
   return {this->KeyAt(0),newLeaf->KeyAt(0)};
 }
 
+/**
+ * **************************************************
+ *                    DELETION
+ * **************************************************
+*/
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::DeleteWithoutMerge(const KeyType &key, KeyComparator comparator){
+  std::cout << "BPlusTree::DeleteWithoutMerge..." << std::endl;
+  for(int i = 0; i < GetSize(); i++){
+    if(comparator(KeyAt(i),key)==0){ // 查看是否存在key，如果存在key则返回false
+      DeleteKeyValueAt(i); // 这里应该不用手动清空吧，手动drop
+      return;
+    } 
+  } 
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::DeleteKeyValueAt(int index){
+  for(int i = index; i < GetSize()-1; i++){
+    array_[i] = array_[i+1];
+  }
+  IncreaseSize(-1);
+}
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;
 template class BPlusTreeLeafPage<GenericKey<8>, RID, GenericComparator<8>>;
