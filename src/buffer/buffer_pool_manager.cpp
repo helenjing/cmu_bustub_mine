@@ -44,7 +44,10 @@ BufferPoolManager::~BufferPoolManager() { delete[] pages_; }
 auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * { 
   // 先找到一个空的frame
   frame_id_t frame_id = -1;
-  if(FindOrEvictFrame(&frame_id) == false) return nullptr;
+  if(FindOrEvictFrame(&frame_id) == false){
+    throw Exception("BufferPoolManager::NewPage:cannot find new page...");
+    return nullptr;
+  }
 
   // 拿到一张空的page了（frame_id），分配一个page_id
   // 貌似这个函数就是模拟一下，从硬盘中取出页号为多少的页。这里就直接顺序数字模拟了
@@ -68,7 +71,10 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType
   }  
   frame_id_t frame_id = -1;
   // 2. 和NewPage很类似，获得一个空的frame
-  if(FindOrEvictFrame(&frame_id)==false) return nullptr;
+  if(FindOrEvictFrame(&frame_id)==false){
+    throw Exception("BufferPoolManager::FetchPage: no avaliable frame...");
+    return nullptr;
+  } 
   pages_[frame_id].pin_count_++;  // 20231208 project2，FetchPageWrite latch报错，加上了pin
   disk_manager_->ReadPage(page_id, pages_[frame_id].data_); //这是不是太不安全了
   pages_[frame_id].page_id_ = page_id;
@@ -142,7 +148,10 @@ auto BufferPoolManager::AllocatePage() -> page_id_t { return next_page_id_++; }
 
 auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard { 
   Page* available_page = FetchPage(page_id);
-  if(available_page == nullptr) return {this, nullptr};
+  if(available_page == nullptr){
+    throw Exception("BufferPoolManager::FetchPageBasic, page not in bufferpool");
+    return {this, nullptr};
+  }
   return {this, available_page}; 
 }
 
@@ -189,7 +198,7 @@ auto BufferPoolManager::FindOrEvictFrame(frame_id_t* frame_id) -> bool {
   // 1. 先在free_list中找
   // std::cout << "FindorEvictFrame...." << std::endl;
   if(free_list_.empty() == false){
-    // std::cout << "candidate found in free_list_..." << std::endl;
+    std::cout << "candidate found in free_list_..."<< free_list_.size() << std::endl;
     *frame_id = *free_list_.begin();  // 不知道语法对不对
     replacer_->RecordAccess(*frame_id); // 不知道怎么回事，必须得new一个LRUKNode啊
     free_list_.pop_front();

@@ -179,7 +179,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
 // TODO
 void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
     if(node_store_.find(frame_id) == node_store_.end()){
-        throw Exception("invalid frame_id!");
+        throw Exception("LRUReplacer::SetEvictable::invalid frame_id!");
     }
     // 这貌似是一个统一的逻辑(不管是新的frame还是已经在replacer的frame)
     if(set_evictable == true){  // 能够被替换

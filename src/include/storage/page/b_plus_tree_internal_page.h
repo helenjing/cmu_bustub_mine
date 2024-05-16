@@ -103,6 +103,20 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto SplitInsert(const KeyType &key, const ValueType &value, KeyComparator comparator,  BPlusTreeInternalPage* newInternal)->std::pair<KeyType, KeyType>;
 
   /**
+   * *****************************************************
+   *                      DELETION
+   * *****************************************************
+  */
+  /**
+   * 牵连父节点，更改父节点的key值（parentNode->ChangeKey()）
+   */
+  void ChangeKey(KeyType new_key, KeyType old_key, KeyComparator comparator);
+
+
+  auto FindChildSiblingIndex(KeyType key, KeyComparator comparator) -> std::pair<int, bool>;
+
+
+  /**
    * @brief For test only, return a string representing all keys in
    * this internal page, formatted as "(key1,key2,key3,...)"
    *

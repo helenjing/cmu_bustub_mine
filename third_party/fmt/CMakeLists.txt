@@ -170,7 +170,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
       set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS} -Wshift-overflow=2
           -Wnull-dereference -Wduplicated-cond)
   endif ()
-  set(WERROR_FLAG -Werror)
+
 endif ()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -182,7 +182,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS}
         -Wzero-as-null-pointer-constant)
   endif ()
-  set(WERROR_FLAG -Werror)
+
 endif ()
 
 if (MSVC)

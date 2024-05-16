@@ -29,6 +29,7 @@
 #include "planner/planner.h"
 #include "type/value_factory.h"
 
+
 namespace bustub {
 
 auto Planner::PlanTableRef(const BoundTableRef &table_ref) -> AbstractPlanNodeRef {

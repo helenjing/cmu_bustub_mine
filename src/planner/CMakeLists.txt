@@ -13,3 +13,5 @@ add_library(
 set(ALL_OBJECT_FILES
   ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:bustub_planner>
   PARENT_SCOPE)
+
+add_compile_options(" -Wno-unused-variable -Wno-unused-function -Wno-error")

@@ -284,6 +284,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   // 树不为空, ctx.root_page_id_ != INVALID_PAGE_ID
   auto readGuard = bpm_->FetchPageRead(ctx.root_page_id_);
   auto cur_page = readGuard.As<BPlusTreePage>();
+
   while(!cur_page->IsLeafPage()){  // 一定要写非递归的吗，还是可以写递归的？
     // 遍历这个node，比较
     auto *rinternal = reinterpret_cast<const InternalPage *>(cur_page);
@@ -297,6 +298,8 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   auto *rleaf = reinterpret_cast<const LeafPage *>(cur_page);
   ValueType tmpValue;
   if(rleaf->FindValueForKey(key, &tmpValue, comparator_)==false)  return; // key不存在
+
+  KeyType old_key = key;  // 存需要删除的key
   while(!ctx.read_set_.empty()){ 
 
     // 首先把read_set_转化成write_set
@@ -305,52 +308,120 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
     ctx.PopReadGuardToWriteGuard(&writeGuard);
     // std::cout << "readGuard=====>writeGuard pageId: " << writeGuard.PageId() << std::endl;
     auto cur_w_page = writeGuard.AsMut<BPlusTreePage>();
-    // 不会再进行merge了
-    if(cur_w_page->GetSize()>cur_w_page->GetMinSize() || writeGuard.PageId()==ctx.root_page_id_){  //不需要转换成internal 或者 leaf 就能直接getSize了？
-      std::cout << "no more mergings!!!" << std::endl;
-      if(cur_w_page->IsLeafPage()){ // IsLeafPage donot split
-        auto *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);  // 这里不能再const LeafPage*了，因为const不能改变对象的内容。
-        wleaf->DeleteWithoutMerge(key, comparator_);
-      }else{  // IsInternalPage donot split
+    
+    if(writeGuard.PageId()==ctx.root_page_id_){
+      std::cout << "Leaf==Root && no more mergings!!!" << std::endl;
+      // 如果现在root的size是1，将header_page的rootpage置为invalid
+      if(cur_w_page->GetSize()==1){
+        writeGuard = bpm_->FetchPageWrite(header_page_id_);
+        ctx.header_page_r_ = std::nullopt;
+        ctx.header_page_w_ = std::move(writeGuard);
+        auto h_page = writeGuard.AsMut<BPlusTreeHeaderPage>();
+        h_page->root_page_id_ = INVALID_PAGE_ID;
+        return;
+      }
+      if(cur_w_page->IsLeafPage()){
+        auto *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);  
+        wleaf->DeleteWithoutMerge(old_key, comparator_); 
+      }else{
         // auto *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
         // winternal->DeleteWithoutMerge(new_key, comparator_);
       }
       return;
     }
-    // // 需要merge
-    // if(cur_w_page->IsLeafPage()){ // IsLeafPage split
-    //   std::cout << "needs to split a Leaf Page...." << std::endl;
-    //   LeafPage *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);
-    //   std::cout <<"bplustree" << wleaf->GetSize() <<" " << cur_w_page->GetSize()<< std::endl;
-    //   先New一个Page
-    //   if(bpm_->NewPage(&new_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
-    //   std::cout <<"bplustree" << wleaf->GetSize() <<" " << cur_w_page->GetSize()<< std::endl;
-    //   writeGuard = bpm_->FetchPageWrite(new_page_id);
-    //   LeafPage* newLeaf = writeGuard.AsMut<LeafPage>();
-    //   std::cout << wleaf << " " << newLeaf << std::endl;
-    //   initialize
-    //   newLeaf->Init(leaf_max_size_);
-    //   ctx.write_set_.push_back(std::move(writeGuard));
-    //   std::tie(old_key, new_key) = wleaf->SplitInsert(key, value, comparator_, newLeaf, new_page_id);
+    // 情形1：不需merge：当前key>GetMin,或者是root
+    if(cur_w_page->GetSize()>cur_w_page->GetMinSize()){  
+      std::cout << "no more mergings!!!" << std::endl;
+      bool isDeleteMin;  // 删除之前，key所在的index
+      KeyType newMinKey;  // 这是父节点替换后的key
+      if(cur_w_page->IsLeafPage()){ // delete当前节点的最大key时。需要更改父节点中的key。（但是不会再propagate了）
+        LeafPage *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);  
+        isDeleteMin = wleaf->DeleteWithoutMerge(old_key, comparator_);  
+        newMinKey = wleaf->KeyAt(0);
+      }else{  // IsInternalPage donot split
+        // auto *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
+        // isDeleteMax = winternal->DeleteWithoutMerge(new_key, comparator_);
+        // newMaxKey = winternal->KeyAt(wleaf->GetMaxSize()-1);
+      }
+      // 更改父节点的值
+      if(!isDeleteMin)  return;
+      ctx.PopReadGuardToWriteGuard(&writeGuard);
+      InternalPage* parentPage = writeGuard.AsMut<InternalPage>();
+      parentPage->ChangeKey(newMinKey, old_key, comparator_);
+      return;
+    }
+    // 情形2：需要merge key<=GetMin
+    // 2.a找到兄弟节点。
+    // 2.a.1 ctx.read_set找到父节点，对比当前节点最大值，找到对应的index
+    // 2.a.2 默认合并右侧的兄弟节点。如果是最右侧的节点，则合并左侧的节点
+    // 2.b 判断兄弟是否够借（先借1个吧）
+    // 2.b.1 如果够借，改父节点中的keyvalue值。结束
+    // 2.b.2 如果不够借，合并两个兄弟节点，先改父节点中的keyvalue，（然后删除父节点中的某一个keyvalue对，交给下一次递归）
+    std::cout << "needs to merge a Sibling Page...." << std::endl;
+    int sibling_index = -1;
+    bool is_Sibling_Larger = false;
+    if(cur_w_page->IsLeafPage()){ // IsLeafPage sibling
+      LeafPage *wleaf = reinterpret_cast<LeafPage *>(cur_w_page);
+      // 2.a找到兄弟节点。
+      ctx.PopReadGuardToWriteGuard(&writeGuard);
+      InternalPage* parentPage = writeGuard.AsMut<InternalPage>();
+      std::tie(sibling_index, is_Sibling_Larger) = parentPage->FindChildSiblingIndex(wleaf->KeyAt(wleaf->GetSize()-1), comparator_);
+      writeGuard = bpm_->FetchPageWrite(parentPage->ValueAt(sibling_index));
+      ctx.write_set_.push_back(std::move(writeGuard));
+      LeafPage* sibling_leaf = writeGuard.AsMut<LeafPage>();
 
-    //   std::cout << "old_key:" << old_key << "new_key_:" << new_key << std::endl;
+      // 先将该删掉的key删掉，不改变父节点的值
+      bool isDeleteMaxCur = false;
+      bool isDeleteMaxSib = false;
+      isDeleteMaxCur = wleaf->DeleteWithoutMerge(old_key, comparator_);  // 现在wleaf是缺了一个,flag决定是否改父节点的值（当前节点对应的）
+      
+      //2.b 判断兄弟是否够借
+      // 2.b.1 够借
+      if(sibling_leaf->GetSize()>sibling_leaf->GetMinSize()){ // 够借
+        KeyType sibling_key;
+        ValueType sibling_value;
+        if(is_Sibling_Larger){  // 将兄弟的第一个节点借给自己
+          sibling_key = sibling_leaf->KeyAt(0);
+          sibling_value = sibling_leaf->ValueAt(0);
+          isDeleteMaxSib = sibling_leaf->DeleteWithoutMerge(sibling_key, comparator_);
+          isDeleteMaxCur = true;
+        }else{  // 将兄弟最后一个节点借给自己
+          sibling_key = sibling_leaf->KeyAt(sibling_leaf->GetSize()-1);
+          sibling_value = sibling_leaf->ValueAt(sibling_leaf->GetSize()-1);
+          isDeleteMaxSib = sibling_leaf->DeleteWithoutMerge(sibling_key, comparator_);
+        }
+        wleaf->InsertKeyValueNotFull(sibling_key, sibling_value, comparator_);
+        // 现在来修改父节点的key值
+        ctx.PopReadGuardToWriteGuard(&writeGuard);
+        InternalPage* parentPage = writeGuard.AsMut<InternalPage>();
+        if(isDeleteMaxCur){ 
+          parentPage->ChangeKey(wleaf->KeyAt(wleaf->GetSize()-1), old_key, comparator_);
+        }
+        if(isDeleteMaxSib){
+          parentPage->ChangeKey(wleaf->KeyAt(wleaf->GetSize()-1), sibling_key, comparator_);
+        }
+        return;
+      }else{  // 兄弟不够借
+        // sibling_leaf->mergeSibling(wleaf, comparator_); // 合并key value
+        // 把wleaf这一page置空。这一页怎么重复利用呢。先不管了吧。
+        // 还需要把leaf 的siblinglink 重新连起来
+      }
+    }else{  // IsInternalPage
+      // std::cout << "needs to split a Internal Page...." << std::endl;
+      // InternalPage *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
+      // KeyType insert_key = new_key;
+      // page_id_t insert_page_id = new_page_id; // 这个一定是有值的，为了防止newpage的时候把它冲掉
 
-    // }else{  // IsInternalPage
-    //   std::cout << "needs to split a Internal Page...." << std::endl;
-    //   InternalPage *winternal = reinterpret_cast<InternalPage *>(cur_w_page);
-    //   KeyType insert_key = new_key;
-    //   page_id_t insert_page_id = new_page_id; // 这个一定是有值的，为了防止newpage的时候把它冲掉
+      // // 先New一个Page
+      // if(bpm_->NewPage(&new_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
+      // writeGuard = bpm_->FetchPageWrite(new_page_id);
+      // auto newInternal = writeGuard.AsMut<InternalPage>();
+      // newInternal->Init(internal_max_size_);
 
-    //   先New一个Page
-    //   if(bpm_->NewPage(&new_page_id) == nullptr) return false;  // 返回的是一个page啊，我能用这个page指针做什么
-    //   writeGuard = bpm_->FetchPageWrite(new_page_id);
-    //   auto newInternal = writeGuard.AsMut<InternalPage>();
-    //   newInternal->Init(internal_max_size_);
-
-    //   std::tie(old_key, new_key) = winternal->SplitInsert(insert_key, insert_page_id, comparator_, newInternal);
-    //   std::cout << "old_key: "<< old_key << " new_key: " << new_key << std::endl;
-    //   ctx.write_set_.push_back(std::move(writeGuard));
-    // }
+      // std::tie(old_key, new_key) = winternal->SplitInsert(insert_key, insert_page_id, comparator_, newInternal);
+      // std::cout << "old_key: "<< old_key << " new_key: " << new_key << std::endl;
+      // ctx.write_set_.push_back(std::move(writeGuard));
+    }
     
     
   }
@@ -463,7 +534,6 @@ void BPLUSTREE_TYPE::Print(BufferPoolManager *bpm) {
 
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::PrintTree(page_id_t page_id, const BPlusTreePage *page) {
-  std::cout << "printTree xixi" << std::endl;
   if (page->IsLeafPage()) {
     auto *leaf = reinterpret_cast<const LeafPage *>(page);
     std::cout << "Leaf Page: " << page_id << "\tNext: " << leaf->GetNextPageId() << std::endl;
@@ -607,16 +677,13 @@ auto BPLUSTREE_TYPE::DrawBPlusTree() -> std::string {
   }
 
   PrintableBPlusTree p_root = ToPrintableBPlusTree(GetRootPageId());
-  std::cout << "hahaha" << std::endl;
   std::ostringstream out_buf;
   p_root.Print(out_buf);
-  std::cout << "xixi" << std::endl;
   return out_buf.str();
 }
 
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree {
-  std::cout << "ToPrintableBPlusTree"<< std::endl;
   auto root_page_guard = bpm_->FetchPageBasic(root_id);
   auto root_page = root_page_guard.template As<BPlusTreePage>();
   PrintableBPlusTree proot;
@@ -636,12 +703,10 @@ auto BPLUSTREE_TYPE::ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTr
   for (int i = 0; i < internal_page->GetSize(); i++) {
     std::cout << internal_page->KeyAt(1)<< " " << internal_page->ValueAt(i) << " " << internal_page->GetSize()<<std::endl;
     page_id_t child_id = internal_page->ValueAt(i);
-    std::cout << "wuwu" << std::endl;
     PrintableBPlusTree child_node = ToPrintableBPlusTree(child_id);
     proot.size_ += child_node.size_;
     proot.children_.push_back(child_node);
   }
-  std::cout << "wawa" << std::endl;
   return proot;
 }
 

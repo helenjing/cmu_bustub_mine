@@ -52,7 +52,8 @@ static const int GRAPH_NODE_CNT = 10;
 
 auto GetMockTableSchemaOf(const std::string &table) -> Schema {
   if (table == "__mock_table_1") {
-    return Schema{std::vector{{Column{"colA", TypeId::INTEGER}, {Column{"colB", TypeId::INTEGER}}}}};
+    //return Schema{std::vector{{Column{"colA", TypeId::INTEGER}, {Column{"colB", TypeId::INTEGER}}}}};
+    return Schema{std::vector{Column{"colA", TypeId::INTEGER}, {Column{"colB", TypeId::INTEGER}}}};
   }
 
   if (table == "__mock_table_2") {

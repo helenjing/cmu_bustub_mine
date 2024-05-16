@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <random>
+#include <fstream>
 
 #include "buffer/buffer_pool_manager.h"
 #include "gtest/gtest.h"
@@ -27,13 +28,13 @@ using bustub::DiskManagerUnlimitedMemory;
 /**
  * This test should be passing with your Checkpoint 1 submission.
  */
-TEST(BPlusTreeTests, DISABLED_ScaleTest) {  // NOLINT
+TEST(BPlusTreeTests, ScaleTest) {  // NOLINT  //DISABLED_
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
 
   auto disk_manager = std::make_unique<DiskManagerUnlimitedMemory>();
-  auto *bpm = new BufferPoolManager(30, disk_manager.get());
+  auto *bpm = new BufferPoolManager(50, disk_manager.get());  //30
 
   // create and fetch header_page
   page_id_t page_id;
@@ -56,14 +57,28 @@ TEST(BPlusTreeTests, DISABLED_ScaleTest) {  // NOLINT
   // randomized the insertion order
   auto rng = std::default_random_engine{};
   std::shuffle(keys.begin(), keys.end(), rng);
+  std::fstream f;
+  f.open("b.txt", std::ios::out);
   for (auto key : keys) {
+    std::cout << "insert key: "<< key  << std::endl;
+    f << key <<",";
     int64_t value = key & 0xFFFFFFFF;
     rid.Set(static_cast<int32_t>(key >> 32), value);
     index_key.SetFromInteger(key);
     tree.Insert(index_key, rid, transaction);
   }
+  
+  
+  f.close();
+  std::cout << "---------------------------" << std::endl;
+  // // std::cout << tree.DrawBPlusTree();
+  
+  // f.open("a.txt", std::ios::out);
+  // f << tree.DrawBPlusTree();
+  // f.close();
   std::vector<RID> rids;
   for (auto key : keys) {
+    std::cout << "check Key: " << key << std::endl;
     rids.clear();
     index_key.SetFromInteger(key);
     tree.GetValue(index_key, &rids);

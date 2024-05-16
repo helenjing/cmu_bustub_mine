@@ -109,9 +109,10 @@ class BPlusTreeLeafPage : public BPlusTreePage {
  /**
   * 在原节点上删除key value对，无需再进行merge
  */
-  void DeleteWithoutMerge(const KeyType &key, KeyComparator comparator);
+  auto DeleteWithoutMerge(const KeyType &key, KeyComparator comparator)->bool;
 
   void DeleteKeyValueAt(int index);
+
 
 
   /**

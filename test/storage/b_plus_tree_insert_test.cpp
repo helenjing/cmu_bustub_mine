@@ -18,6 +18,7 @@
 #include "storage/disk/disk_manager_memory.h"
 #include "storage/index/b_plus_tree.h"
 #include "test_util.h"  // NOLINT
+#include "fstream"
 
 namespace bustub {
 
@@ -29,7 +30,7 @@ TEST(BPlusTreeTests, DISABLED_InsertTest1) { //
   GenericComparator<8> comparator(key_schema.get());
 
   auto disk_manager = std::make_unique<DiskManagerUnlimitedMemory>();
-  auto *bpm = new BufferPoolManager(50, disk_manager.get());
+  auto *bpm = new BufferPoolManager(50, disk_manager.get());  //50
   // create and fetch header_page
   page_id_t page_id;
   auto header_page = bpm->NewPage(&page_id);
@@ -73,24 +74,40 @@ TEST(BPlusTreeTests, InsertTest2) { // DISABLED_
   page_id_t page_id;
   auto header_page = bpm->NewPage(&page_id);
   // create b+ tree
-  BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", header_page->GetPageId(), bpm, comparator, 3, 4);
+  BPlusTree<GenericKey<8>, RID, GenericComparator<8>> tree("foo_pk", header_page->GetPageId(), bpm, comparator,2, 3);
   GenericKey<8> index_key;
   RID rid;
   // create transaction
   auto *transaction = new Transaction(0);
 
-  // std::vector<int64_t> keys = {1, 2, 3, 4, 5};
-  std::vector<int64_t> keys = {8,7,5,10,6,1,3,2,9,4};
+  // std::vector<int64_t> keys = {4481,1005,166,2446,788,3038,4968,2047,440,1463,2838,473,561,4284,4565,3774,748,1786,3600,3213,4559,1854
+  // ,2841,1475,4043,4597,98,133,966,4408,1330,4508,4365,1087,2741,1352,4501,3322,3292,1252,2294,2276,4589,538
+  // , 2609,4625,2878,2697,4757
+  // ,1204,4038,70,4248,2275,2509,2454
+  // };  
+  std::vector<int64_t> keys = {473,788,166,440,561,500};
+  std::cout << keys.size() << std::endl;
+   std::fstream f;
+  f.open("bb.txt", std::ios::out);
   for (auto key : keys) {
     int64_t value = key & 0xFFFFFFFF;
+    f << key << ", ";
     rid.Set(static_cast<int32_t>(key >> 32), value);
     index_key.SetFromInteger(key);
     tree.Insert(index_key, rid, transaction);
-    std::cout << "---------------------------" << std::endl;
-    std::cout << tree.DrawBPlusTree();
   }
-
+  f.close();
+  std::cout << "---------------------------------" << std::endl;
+  
+  std::cout <<tree.DrawBPlusTree();
+  f.open("aa.txt", std::ios::out);
+  f << tree.DrawBPlusTree();
+  f.close();
   std::vector<RID> rids;
+  index_key.SetFromInteger((int64_t)538);
+  tree.GetValue(index_key, &rids);
+  std::cout << rids.size() << std::endl;
+
   for (auto key : keys) {
     std::cout << "check Key" << key << std::endl;
     rids.clear();

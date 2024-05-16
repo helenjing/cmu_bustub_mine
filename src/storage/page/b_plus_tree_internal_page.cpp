@@ -138,6 +138,41 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitInsert(const KeyType &key, const Value
   return {this->KeyAt(1),newInternal->KeyAt(0)};  // 因为最开始的0是废掉的。
 }
 
+/**
+ * *******************************************
+ *                DELETION
+ * *******************************************
+*/
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::ChangeKey(KeyType new_key, KeyType old_key, KeyComparator comparator){
+  // std::cout << "newMaxKey" << newMaxKey << "old_key" << old_key<< std::endl;
+  if(comparator(KeyAt(1),old_key)==1) return; // 说明是作废节点的key，继续作废
+  for(int i = 1; i < GetSize(); i++){
+    if(comparator(KeyAt(i),old_key)==0){ // 查看是否存在key，如果存在key则返回false
+      array_[i] = {new_key, ValueAt(i)};
+      return;
+    } 
+  }
+  throw Exception("B+TreeInternalPage::ChangeKey:cannot find old_key...");
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::FindChildSiblingIndex(KeyType key, KeyComparator comparator) -> std::pair<int, bool>{
+  if(GetSize()==1)  throw Exception("B+TreeInternalPage::FindChildSiblingIndex:parent has only one kv....");
+  if(comparator(KeyAt(1),key)==1){  // 作废节点的key
+    return {1, true};
+  }
+  for(int i = 1; i < GetSize()-1; i++){
+    if(comparator(KeyAt(i),key)==0){ // 除开最后一个keyvalue对
+       return {i+1, true};
+    } 
+  }
+  if(comparator(KeyAt(GetSize()-1),key)==0){ // 最后一个keyvalue对
+       return {GetSize()-2, true};
+    } 
+  throw Exception("B+TreeInternalPage::FindChildSiblingIndex:cannot find key...");
+}
+
 // valuetype for internalNode should be page id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;
 template class BPlusTreeInternalPage<GenericKey<8>, page_id_t, GenericComparator<8>>;

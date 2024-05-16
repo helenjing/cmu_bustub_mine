@@ -64,7 +64,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const -> KeyType {
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const -> ValueType{
   if(index >= GetSize()){
-    std::cout << index << ":" << GetSize() << std::endl;
+    // std::cout << index << ":" << GetSize() << std::endl;
     throw Exception("BPlusTreeLeafPage::ValueAt:array_ index out of range...");
   } 
   return array_[index].second; // 好像不对
@@ -167,14 +167,16 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::SplitInsert(const KeyType &key, const ValueType
  * **************************************************
 */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::DeleteWithoutMerge(const KeyType &key, KeyComparator comparator){
-  std::cout << "BPlusTree::DeleteWithoutMerge..." << std::endl;
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::DeleteWithoutMerge(const KeyType &key, KeyComparator comparator)->bool{
+  std::cout << "BPlusLeafPage::DeleteWithoutMerge..." << std::endl;
   for(int i = 0; i < GetSize(); i++){
     if(comparator(KeyAt(i),key)==0){ // 查看是否存在key，如果存在key则返回false
       DeleteKeyValueAt(i); // 这里应该不用手动清空吧，手动drop
-      return;
+      // std::cout << i << " " << GetSize()<< std::endl;
+      return i==0;
     } 
   } 
+  throw Exception("B+TreeLeafPage::ChangeKey:cannot find old_key...");
 }
 
 INDEX_TEMPLATE_ARGUMENTS
@@ -183,7 +185,9 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::DeleteKeyValueAt(int index){
     array_[i] = array_[i+1];
   }
   IncreaseSize(-1);
+  
 }
+
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;
 template class BPlusTreeLeafPage<GenericKey<8>, RID, GenericComparator<8>>;
